@@ -1,10 +1,7 @@
 require 'dotenv/load'
 require 'slack-ruby-client'
-require 'pry'
 
-raise 'Missing ENV[SLACK_API_TOKENS]!' unless ENV.key?('SLACK_API_TOKENS')
-
-texts =
+TEXTS =
   [
     'draw!',
     'not fast enough?',
@@ -19,41 +16,38 @@ texts =
   ]
 
 $stdout.sync = true
-logger = Logger.new($stdout)
-logger.level = Logger::DEBUG
+Log = Logger.new($stdout).tap { |log| log.level = Logger::DEBUG }
 
-token = ENV['SLACK_API_TOKENS']
-logger.info "Starting #{token[0..12]} ..."
-
-client = Slack::RealTime::Client.new(token: token)
-
-state =
-  {
-    'UAU4J3DLZ' => (Time.now - 60 * 5), # zoe
-    'DB11PDM3M' => (Time.now - 60 * 5)  # jose
-  }
-
-client.on :hello do
-  logger.info "Successfully connected, welcome '#{client.self.name}' to the '#{client.team.name}' team at https://#{client.team.domain}.slack.com."
+raise 'Missing ENV[SLACK_API_TOKEN]!' unless ENV.key?('SLACK_API_TOKEN')
+Slack.configure do |config|
+  config.token = ENV['SLACK_API_TOKEN']
 end
 
-client.on(:user_typing) do |data|
-  logger.info data
-  client.typing channel: data.channel
-  if data.user == 'UAU4J3DLZ' # zoe
-    state[data.user] ||= Time.now
-    if state[data.user] < (Time.now - 60 * 5)
-      client.message channel: data.channel, text: texts.sample
-      state[data.user] = Time.now
-    end
-  end
-  if data.channel == 'DB11PDM3M' # jose
-    state[data.user] ||= Time.now
-    if state[data.user] < (Time.now - 60 * 5)
-      client.message channel: data.channel, text: texts.sample
-      state[data.user] = Time.now
+Webclient = Slack::Web::Client.new
+Webclient.auth_test
+
+channels = Webclient.channels_list['channels'].map { |c| c['id'] }
+
+@rlstate = {}
+Rlclient = Slack::RealTime::Client.new
+
+Rlclient.on :hello do
+  Log.info "Successfully connected, welcome '#{Rlclient.self.name}' to the '#{Rlclient.team.name}' team at https://#{Rlclient.team.domain}.slack.com."
+end
+
+Rlclient.on(:user_typing) do |data|
+  Log.info data
+  Rlclient.typing channel: data.channel
+  channels = Webclient.channels_list['channels'].to_a.map { |c| c['id'] }
+  unless channels.include? data.channel
+    Log.info 'direct message'
+    @rlstate[data.user] ||= (Time.now - 60 * 6)
+    if @rlstate[data.user] < (Time.now - 60 * 5)
+      Log.info 'send a text'
+      Rlclient.message channel: data.channel, text: TEXTS.sample
+      @rlstate[data.user] = Time.now
     end
   end
 end
 
-client.start!
+Rlclient.start!

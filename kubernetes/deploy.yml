@@ -1,0 +1,33 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: schasse-types
+  namespace: schasse
+  labels:
+    run: schasse-types
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: schasse-types
+    spec:
+      containers:
+      - name: alpine-tmux
+        image: alpine
+        command:
+          - sh
+          - -c
+          - |
+            apk add build-base ruby-dev ruby-bigdecimal ruby-json git emacs-nox tmux
+            cd root
+            git clone https://github.com/schasse/slacktyping.git
+            cd slacktyping
+            gem install bundler
+            bundle
+            # setting my max terminal size
+            stty rows 83
+            stty columns 319
+            exec tmux
+        stdin: true
+        tty: true
